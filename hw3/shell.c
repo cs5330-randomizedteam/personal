@@ -1,6 +1,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +28,9 @@ struct termios shell_tmodes;
 
 /* Process group id for the shell */
 pid_t shell_pgid;
+
+/* The linux environment PATH variable */
+struct tokens *PATH;
 
 int cmd_exit(struct tokens *tokens);
 int cmd_help(struct tokens *tokens);
@@ -97,6 +101,9 @@ void init_shell() {
   /* Check if we are running interactively */
   shell_is_interactive = isatty(shell_terminal);
 
+  /* Load the PATH variable */
+  PATH = tokenize(getenv("PATH"), ':');
+
   if (shell_is_interactive) {
     /* If the shell is not currently in the foreground, we must pause the shell until it becomes a
      * foreground process. We use SIGTTIN to pause the shell. When the shell gets moved to the
@@ -115,6 +122,51 @@ void init_shell() {
   }
 }
 
+char* resolve_path(const char* path) {
+  int n = tokens_get_length(PATH);
+  char *temp = malloc(sizeof(char) * 1024);
+  for (int i = 0; i < n; i++) {
+    char* dir = tokens_get_token(PATH, i);
+    int len = strlen(dir);
+    strcpy(temp, dir);
+    temp[len] = '/', temp [len+1] = '\0';
+    strcat(temp, path);
+    if (access(temp, F_OK) != -1) {
+      char* resolved_path = malloc(sizeof(char) * strlen(temp));
+      strcpy(resolved_path, temp);
+      free(temp);
+      return resolved_path;
+    }
+  }
+  free(temp);
+  return NULL;
+}
+
+void execute_user_program(struct tokens *tokens) {
+  int pid = fork();
+    if (pid == 0) {
+      char *path = tokens_get_token(tokens, 0);
+      char *resolved_path = resolve_path(path);
+      if (resolved_path == NULL) {
+        printf("%s is not found\n", path);
+        exit(-1);
+      }
+      int num_para = tokens_get_length(tokens);
+      char **argv = malloc(sizeof(char*) * (1+num_para));
+      for (int i = 0; i < num_para; i++) {
+        argv[i] = tokens_get_token(tokens, i);
+      }
+      argv[num_para] = NULL;
+      execv(resolved_path, argv);
+      printf("%s is failed to execute\n", path);
+      free(argv);
+      free(resolved_path);
+      exit(-1);
+    } else {
+      wait (NULL);
+    }
+}
+
 int main(unused int argc, unused char *argv[]) {
   init_shell();
 
@@ -123,11 +175,11 @@ int main(unused int argc, unused char *argv[]) {
 
   /* Please only print shell prompts when standard input is not a tty */
   if (shell_is_interactive)
-    fprintf(stdout, "%d: ", line_num);
+    fprintf(stdout, "[%d] %d: ", getpid(), line_num);
 
   while (fgets(line, 4096, stdin)) {
     /* Split our line into words. */
-    struct tokens *tokens = tokenize(line);
+    struct tokens *tokens = tokenize(line, ' ');
 
     /* Find which built-in function to run. */
     int fundex = lookup(tokens_get_token(tokens, 0));
@@ -135,13 +187,12 @@ int main(unused int argc, unused char *argv[]) {
     if (fundex >= 0) {
       cmd_table[fundex].fun(tokens);
     } else {
-      /* REPLACE this to run commands as programs. */
-      fprintf(stdout, "This shell doesn't know how to run programs.\n");
+      execute_user_program(tokens);
     }
 
     if (shell_is_interactive)
       /* Please only print shell prompts when standard input is not a tty */
-      fprintf(stdout, "%d: ", ++line_num);
+      fprintf(stdout, "[%d] %d: ", getpid(), ++line_num);
 
     /* Clean up memory */
     tokens_destroy(tokens);

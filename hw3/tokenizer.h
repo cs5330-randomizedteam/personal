@@ -3,8 +3,8 @@
 /* A struct that represents a list of words. */
 struct tokens;
 
-/* Turn a string into a list of words. */
-struct tokens *tokenize(const char *line);
+/* Turn a string into a list of words, separated by the given separator. */
+struct tokens *tokenize(const char *line, const char separator);
 
 /* How many words are there? */
 size_t tokens_get_length(struct tokens *tokens);

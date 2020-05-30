@@ -24,7 +24,7 @@ static void *copy_word(char *source, size_t n) {
   return word;
 }
 
-struct tokens *tokenize(const char *line) {
+struct tokens *tokenize(const char *line, const char separator) {
   if (line == NULL) {
     return NULL;
   }
@@ -56,7 +56,7 @@ struct tokens *tokenize(const char *line) {
         if (i + 1 < line_length) {
           token[n++] = line[++i];
         }
-      } else if (isspace(c)) {
+      } else if (c == separator || isspace(c)) {
         if (n > 0) {
           void *word = copy_word(token, n);
           vector_push(&tokens->tokens, &tokens->tokens_length, word);
