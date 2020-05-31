@@ -142,29 +142,60 @@ char* resolve_path(const char* path) {
   return NULL;
 }
 
-void execute_user_program(struct tokens *tokens) {
-  int pid = fork();
-    if (pid == 0) {
-      char *path = tokens_get_token(tokens, 0);
-      char *resolved_path = resolve_path(path);
-      if (resolved_path == NULL) {
-        printf("%s is not found\n", path);
+void redirect(struct tokens *tokens, bool in) {
+  int n = tokens_get_length(tokens);
+  for (int i = 0; i < n; i++) {
+    char* token = tokens_get_token(tokens, i);
+    if (in &&  token[0] == '<') {
+      char* input = tokens_get_token(tokens, i+1);
+      int fd = open(input, O_RDONLY, 0);
+      if (fd == -1) {
+        printf ("Input file %s is not found or does not have permission to read.\n", input);
         exit(-1);
       }
-      int num_para = tokens_get_length(tokens);
-      char **argv = malloc(sizeof(char*) * (1+num_para));
-      for (int i = 0; i < num_para; i++) {
-        argv[i] = tokens_get_token(tokens, i);
-      }
-      argv[num_para] = NULL;
-      execv(resolved_path, argv);
-      printf("%s is failed to execute\n", path);
-      free(argv);
-      free(resolved_path);
-      exit(-1);
-    } else {
-      wait (NULL);
+      dup2(fd, STDIN_FILENO);
+      close(fd);
+
+    } else if (!in && token[0] == '>') {
+        char* output = tokens_get_token(tokens, i+1);
+        int fd = creat(output, 0644);
+        if (fd == -1) {
+          printf ("Output file %s is not found or does not have permission to read.\n", output);
+          exit(-1);
+        }
+        dup2(fd, STDOUT_FILENO);
+        close(fd);
     }
+  }
+
+}
+
+void execute_user_program(struct tokens *tokens) {
+  int pid = fork();
+  if (pid == 0) {
+    char *path = tokens_get_token(tokens, 0);
+    char *resolved_path = resolve_path(path);
+    if (resolved_path == NULL) {
+      resolved_path = path;
+    }
+    redirect(tokens, 0);
+    redirect(tokens, 1);
+    int num_para = tokens_get_length(tokens);
+    char **argv = malloc(sizeof(char*) * (1+num_para));
+    for (int i = 0; i < num_para; i++) {
+      char *token = tokens_get_token(tokens, i);
+      if (token[0] == '<' || token[0] == '>') break;
+      argv[i] = token;
+    }
+    argv[num_para] = NULL;
+    execv(resolved_path, argv);
+    printf("%s is not found or not able to execute\n", path);
+    free(argv);
+    free(resolved_path);
+    exit(-1);
+  } else {
+    wait (NULL);
+  }
 }
 
 int main(unused int argc, unused char *argv[]) {
