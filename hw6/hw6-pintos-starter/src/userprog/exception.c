@@ -5,7 +5,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/palloc.h"
 #include "userprog/syscall.h"
+#include "userprog/pagedir.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -110,6 +112,13 @@ kill (struct intr_frame *f)
     }
 }
 
+static void set_up_pte(void* fault_addr) {
+  void* page_bound = pg_round_down(fault_addr);
+  void* new_page = palloc_get_page (PAL_ZERO | PAL_USER);
+  if (new_page == NULL) syscall_exit(-1);
+  pagedir_set_page (thread_current()->pagedir, page_bound, new_page, true);
+}
+
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to project 2 may
    also require modifying this code.
@@ -161,8 +170,14 @@ page_fault (struct intr_frame *f)
    * the kernel and end up here. These checks below will allow us to determine
    * that this happened and terminate the process appropriately.
    */
-  if (!user && t->in_syscall && is_user_vaddr (fault_addr))
-    syscall_exit (-1);
+  if (!user && t->in_syscall && is_user_vaddr (fault_addr)) {
+    if (not_present && t->user_stack <= fault_addr) {
+      set_up_pte(fault_addr);
+    } else {
+      syscall_exit(-1);
+    }
+  }
+    
 
   /*
    * If we faulted in user mode, then we assume it's an invalid memory access
@@ -170,16 +185,12 @@ page_fault (struct intr_frame *f)
    * assume this; depending on the nature of the fault, the stack may need to
    * be grown.
    */
-  if (user)
-    syscall_exit (-1);
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+  if (user) {
+    if (is_user_vaddr(fault_addr) && not_present && (f->esp <= fault_addr || f->esp - fault_addr == 32 || f->esp - fault_addr == 4)) {
+      set_up_pte(fault_addr);
+    } else {
+      syscall_exit(-1);
+    }
+  }
 }
