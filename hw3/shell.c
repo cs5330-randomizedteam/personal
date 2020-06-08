@@ -142,11 +142,11 @@ char* resolve_path(const char* path) {
   return NULL;
 }
 
-void redirect(struct tokens *tokens, bool in) {
+void redirect(struct tokens *tokens) {
   int n = tokens_get_length(tokens);
   for (int i = 0; i < n; i++) {
     char* token = tokens_get_token(tokens, i);
-    if (in &&  token[0] == '<') {
+    if (strcmp(token, "<") == 0) {
       char* input = tokens_get_token(tokens, i+1);
       int fd = open(input, O_RDONLY, 0);
       if (fd == -1) {
@@ -156,7 +156,7 @@ void redirect(struct tokens *tokens, bool in) {
       dup2(fd, STDIN_FILENO);
       close(fd);
 
-    } else if (!in && token[0] == '>') {
+    } else if (strcmp(token, ">") == 0) {
         char* output = tokens_get_token(tokens, i+1);
         int fd = creat(output, 0644);
         if (fd == -1) {
@@ -167,7 +167,15 @@ void redirect(struct tokens *tokens, bool in) {
         close(fd);
     }
   }
+}
 
+int count_num_command(struct tokens *tokens) {
+  int n = tokens_get_length(tokens);
+  int cnt = 1;
+  for (int i = 0; i < n; i++) {
+    if (strcmp(tokens_get_token(tokens, i), "|") == 0) cnt++;
+  }
+  return cnt;
 }
 
 void execute_user_program(struct tokens *tokens) {
@@ -178,8 +186,7 @@ void execute_user_program(struct tokens *tokens) {
     if (resolved_path == NULL) {
       resolved_path = path;
     }
-    redirect(tokens, 0);
-    redirect(tokens, 1);
+    redirect(tokens);
     int num_para = tokens_get_length(tokens);
     char **argv = malloc(sizeof(char*) * (1+num_para));
     for (int i = 0; i < num_para; i++) {
