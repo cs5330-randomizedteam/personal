@@ -11,6 +11,14 @@
 
 #include <stdlib.h>
 
+struct mm_block {
+	size_t size;
+	int is_free;
+	struct mm_block *next;
+	struct mm_block *prev;
+};
+
+
 void* mm_malloc(size_t size);
 void* mm_realloc(void* ptr, size_t size);
 void mm_free(void* ptr);

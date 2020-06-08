@@ -40,8 +40,47 @@ int main() {
 
     int *data = (int*) mm_malloc(sizeof(int));
     assert(data != NULL);
-    data[0] = 0x162;
+    data[0] = 354;
+    printf("data is %d\n", data[0]);
+
+    char *bytedata = (char*) mm_malloc(sizeof(char));
+    assert(bytedata != NULL);
+    bytedata[0] = 'x';
+    printf("data is %c\n", bytedata[0]);
+
+
+    char *bytedata1 = (char*) mm_malloc(sizeof(char));
+    assert(bytedata1 != NULL);
+    bytedata1[0] = 'y';
+    printf("data is %c\n", bytedata1[0]);
+
+    char *bytedata2 = (char*) mm_malloc(sizeof(char));
+    assert(bytedata2 != NULL);
+    bytedata2[0] = 'z';
+    printf("data is %c\n", bytedata2[0]);
+
+    char *bytedata3 = (char*) mm_malloc(sizeof(char));
+    assert(bytedata3 != NULL);
+    bytedata3[0] = 'z';
+    printf("data is %c\n", bytedata3[0]);
+
+    char *bytedata4 = (char*) mm_malloc(sizeof(char));
+    assert(bytedata4 != NULL);
+    bytedata4[0] = 'z';
+    printf("data is %c\n", bytedata4[0]);
+
+    // mm_free(bytedata);
+    // mm_free(bytedata1);
+    // mm_free(bytedata3);
+
+    printf("last address: %p\n", bytedata4);
+    char* reloc_data = mm_realloc(bytedata2, sizeof(int));
+    printf("next: %p\n", reloc_data);
+    printf("actual: %c\n", *reloc_data);
+
+
     mm_free(data);
     printf("malloc test successful!\n");
+
     return 0;
 }
