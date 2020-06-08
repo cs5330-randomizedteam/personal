@@ -20,17 +20,37 @@
 //#define vaddr_pte(vaddr)
 //#define vaddr_off(vaddr)
 //
-//#define pfn_to_addr(pfn) (pfn << PAGE_SHIFT)
+#define pfn_to_addr(pfn) (pfn << PAGE_SHIFT)
 
 
 /* Translates the virtual address vaddr and stores the physical address in paddr.
  * If a page fault occurs, return a non-zero value, otherwise return 0 on a successful translation.
  * */
-
+// typedef uint32_t vaddr_ptr;
+// typedef uint64_t paddr_ptr;
 int virt_to_phys(vaddr_ptr vaddr, paddr_ptr cr3, paddr_ptr *paddr) {
-  /* TODO */
 
-  return 1;
+  uint32_t directory_index = vaddr >> 30;
+  pgd_t *page_dir_pointer_entry = ((pgd_t*) cr3) + directory_index;
+  pgd_t pdp_entry;
+  ram_fetch(page_dir_pointer_entry, (void*)&pdp_entry, sizeof(pgd_t));
+  if (!pdp_entry.present) return -1;
+
+  uint32_t pde_index = (vaddr >> 21) & ((1 << 9) - 1);
+  pmd_t *page_directory_entry = (pmd_t*)pfn_to_addr(pdp_entry.pfn) + pde_index;
+  pmd_t pde_entry;
+  ram_fetch(page_directory_entry, (void*)&pde_entry, sizeof(pmd_t));
+  if (!pde_entry.present) return -1;
+
+  uint32_t pte_index = (vaddr >> 12) & ((1 << 9) - 1);
+  pte_t *page_table_entry = (pte_t*)pfn_to_addr(pde_entry.pfn) + pte_index;
+  pte_t pte_entry;
+  ram_fetch(page_table_entry, (void*)&pte_entry, sizeof(pte_t));
+  if (!pte_entry.present) return -1;
+
+  uint32_t offset = vaddr & ((1 << 12) - 1);
+  *paddr = pfn_to_addr(pte_entry.pfn) + offset;
+  return 0;
 }
 
 char *str_from_virt(vaddr_ptr vaddr, paddr_ptr cr3) {
