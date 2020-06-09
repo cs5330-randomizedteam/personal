@@ -194,5 +194,5 @@ inumber (int fd)
 void*
 sbrk (intptr_t increment)
 {
-  return syscall1 (SYS_SBRK, increment);
+  return (void*)syscall1 (SYS_SBRK, increment);
 }
