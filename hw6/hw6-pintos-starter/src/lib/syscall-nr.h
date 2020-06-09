@@ -21,6 +21,7 @@ enum
     SYS_PRACTICE,               /* Returns arg incremented by 1 */
 
     /* Project 3 and optionally project 4. */
+    SYS_SBRK,
     SYS_MMAP,                   /* Map a file into memory. */
     SYS_MUNMAP,                 /* Remove a memory mapping. */
 

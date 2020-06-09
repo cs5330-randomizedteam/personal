@@ -93,6 +93,8 @@ struct thread
     struct list_elem allelem;           /* List element for all threads list. */
 
     void* user_stack;
+    uint32_t start_heap;
+    uint32_t brk;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

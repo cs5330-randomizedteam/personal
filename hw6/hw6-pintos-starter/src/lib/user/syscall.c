@@ -194,6 +194,5 @@ inumber (int fd)
 void*
 sbrk (intptr_t increment)
 {
-  /* Homework 5, Part B: YOUR CODE HERE */
-  return NULL;
+  return syscall1 (SYS_SBRK, increment);
 }

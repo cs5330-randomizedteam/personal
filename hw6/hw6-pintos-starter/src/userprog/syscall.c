@@ -1,10 +1,12 @@
 #include "userprog/syscall.h"
+#include "userprog/pagedir.h"
 #include <stdio.h>
 #include <string.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/palloc.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 
@@ -98,6 +100,43 @@ syscall_close (int fd)
     }
 }
 
+static uint32_t 
+syscall_sbrk (intptr_t increment)
+{
+  struct thread *t = thread_current();
+  uint32_t cur_brk = t->brk;
+  if (increment == 0) return t->brk;
+  else if (increment < 0) {
+    uint32_t next_brk_page = (cur_brk + increment - 1) & ~PGMASK, cur_brk_page = cur_brk & ~PGMASK;
+    if (next_brk_page < t->start_heap) next_brk_page = t->start_heap - PGSIZE;
+    for (; cur_brk_page > next_brk_page; cur_brk_page -= PGSIZE) {
+      void* paddr = pagedir_get_page(t->pagedir, (void*)cur_brk_page);
+      pagedir_clear_page(t->pagedir, (void*)cur_brk_page);
+      palloc_free_page(paddr);
+    }
+  } else {
+
+    uint32_t next_brk_page = (cur_brk + increment - 1) & ~PGMASK, cur_brk_page = cur_brk & ~PGMASK;
+    int page_cnt = (next_brk_page - cur_brk_page) / PGSIZE + 1;
+
+    if ((cur_brk & PGMASK) != 0) {
+      page_cnt -= 1;
+      cur_brk_page += PGSIZE;
+    }
+
+    if (page_cnt > 0) {
+      void* new_pages =  palloc_get_multiple (PAL_ZERO | PAL_USER, page_cnt);
+      if (new_pages == NULL) return -1;
+      for (; cur_brk_page <= next_brk_page; cur_brk_page += PGSIZE, new_pages += PGSIZE) {
+        pagedir_set_page (t->pagedir, (void*)cur_brk_page, new_pages, true);
+      }
+    }
+  }
+
+  t->brk += increment;
+  return cur_brk;
+}
+
 static void
 syscall_handler (struct intr_frame *f)
 {
@@ -135,6 +174,11 @@ syscall_handler (struct intr_frame *f)
     case SYS_CLOSE:
       validate_buffer_in_user_region (&args[1], sizeof(uint32_t));
       syscall_close ((int) args[1]);
+      break;
+
+    case SYS_SBRK:
+      validate_buffer_in_user_region (&args[1], sizeof(uint32_t));
+      f->eax = syscall_sbrk((intptr_t)args[1]);
       break;
 
     default:
