@@ -56,7 +56,7 @@ struct tokens *tokenize(const char *line, const char separator) {
         if (i + 1 < line_length) {
           token[n++] = line[++i];
         }
-      } else if (c == separator || isspace(c)) {
+      } else if (c == separator || c == '\n') {
         if (n > 0) {
           void *word = copy_word(token, n);
           vector_push(&tokens->tokens, &tokens->tokens_length, word);

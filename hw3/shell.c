@@ -54,6 +54,8 @@ fun_desc_t cmd_table[] = {
   {cmd_cd, "cd", "change the current working directory"},
 };
 
+int pipefds[2][2];
+
 /* Prints a helpful description for the given command */
 int cmd_help(unused struct tokens *tokens) {
   for (unsigned int i = 0; i < sizeof(cmd_table) / sizeof(fun_desc_t); i++)
@@ -177,9 +179,15 @@ int count_num_command(struct tokens *tokens) {
   return cnt;
 }
 
-void execute_user_program(struct tokens *tokens) {
+void execute_user_program(struct tokens *tokens, int idx, int total) {
   int pid = fork();
   if (pid == 0) {
+    if (idx != 0) dup2(pipefds[(idx + 1) % 2][0], STDIN_FILENO); 
+    if (idx != total - 1) dup2(pipefds[idx % 2][1], STDOUT_FILENO);
+    close(pipefds[(idx + 1) % 2][0]);
+    close(pipefds[(idx + 1) % 2][1]);
+    close(pipefds[idx % 2][0]);
+    close(pipefds[idx % 2][1]);
     char *path = tokens_get_token(tokens, 0);
     char resolved_path[1024];
     int error = resolve_path(path, resolved_path);
@@ -199,6 +207,7 @@ void execute_user_program(struct tokens *tokens) {
       argv[cnt++] = token;
     }
     argv[cnt] = NULL;
+
     execv(resolved_path, argv);
     printf("%s is not found or not able to execute\n", path);
     free(argv);
@@ -214,29 +223,41 @@ int main(unused int argc, unused char *argv[]) {
   static char line[4096];
   int line_num = 0;
 
+  if (pipe(pipefds[0]) == -1 || pipe(pipefds[1]) == -1) {
+    perror("pipe");
+    exit(-1);
+  }
+ 
   /* Please only print shell prompts when standard input is not a tty */
   if (shell_is_interactive)
     fprintf(stdout, "[%d] %d: ", getpid(), line_num);
 
   while (fgets(line, 4096, stdin)) {
-    /* Split our line into words. */
-    struct tokens *tokens = tokenize(line, ' ');
+    struct tokens *programs = tokenize(line, '|');
+    int len = tokens_get_length(programs);
+    for (int i = 0; i < len; i++) {
 
-    /* Find which built-in function to run. */
-    int fundex = lookup(tokens_get_token(tokens, 0));
+      /* Split our line into words. */
+      struct tokens *tokens = tokenize(tokens_get_token(programs, i), ' ');
 
-    if (fundex >= 0) {
-      cmd_table[fundex].fun(tokens);
-    } else {
-      execute_user_program(tokens);
+      /* Find which built-in function to run. */
+      int fundex = lookup(tokens_get_token(tokens, 0));
+
+      if (fundex >= 0) {
+        cmd_table[fundex].fun(tokens);
+      } else {
+        execute_user_program(tokens, i, len);
+      }
+
+      if (i == len - 1 && shell_is_interactive)
+        /* Please only print shell prompts when standard input is not a tty */
+        fprintf(stdout, "[%d] %d: ", getpid(), ++line_num);
+
+      /* Clean up memory */
+      tokens_destroy(tokens);
     }
 
-    if (shell_is_interactive)
-      /* Please only print shell prompts when standard input is not a tty */
-      fprintf(stdout, "[%d] %d: ", getpid(), ++line_num);
-
-    /* Clean up memory */
-    tokens_destroy(tokens);
+    tokens_destroy(programs);
   }
 
   return 0;
