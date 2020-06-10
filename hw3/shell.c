@@ -102,6 +102,9 @@ void init_shell() {
   /* Our shell is connected to standard input. */
   shell_terminal = STDIN_FILENO;
 
+  /* Register signal handler */
+  // register_signals_termial();
+
   /* Check if we are running interactively */
   shell_is_interactive = isatty(shell_terminal);
 
@@ -119,9 +122,10 @@ void init_shell() {
     shell_pgid = getpid();
 
     /* Take control of the terminal */
-    tcsetpgrp(shell_terminal, shell_pgid);
+    if (tcsetpgrp(shell_terminal, shell_pgid) == -1)
+      printf("failed tcsetpgrp\n");
 
-    /* Save the current termios to a variable, so it can be restored later. */
+     // Save the current termios to a variable, so it can be restored later. 
     tcgetattr(shell_terminal, &shell_tmodes);
   }
 }
@@ -180,8 +184,28 @@ int count_num_command(struct tokens *tokens) {
 }
 
 void execute_user_program(struct tokens *tokens, int in, int out) {
+  signal(SIGINT,SIG_IGN);
+  signal(SIGQUIT,SIG_IGN);
+  signal(SIGTSTP,SIG_IGN);
+  signal(SIGTTIN,SIG_IGN);
+  signal(SIGTTOU,SIG_IGN);
+  signal(SIGCHLD,SIG_IGN);
+  signal(SIGCONT,SIG_IGN);
+  signal(SIGKILL,SIG_IGN);
+
   int pid = fork();
   if (pid == 0) {
+    setpgid(0, getpid());
+    tcsetpgrp(STDIN_FILENO, getpid());
+    signal(SIGINT,SIG_DFL);
+    signal(SIGQUIT,SIG_DFL);
+    signal(SIGTSTP,SIG_DFL);
+    signal(SIGTTIN,SIG_DFL);
+    signal(SIGTTOU,SIG_DFL);
+    signal(SIGCHLD,SIG_DFL);
+    signal(SIGCONT,SIG_DFL);
+    signal(SIGKILL,SIG_DFL);
+
     if (in != STDIN_FILENO) {
       dup2(in, STDIN_FILENO); 
       close(in);
@@ -217,6 +241,7 @@ void execute_user_program(struct tokens *tokens, int in, int out) {
     exit(-1);
   } else {
     wait (NULL);
+    tcsetpgrp(STDIN_FILENO, shell_pgid);
   }
 }
 
@@ -252,7 +277,6 @@ int main(unused int argc, unused char *argv[]) {
         }
         if (i != len - 1) out = pipefd[1];
         execute_user_program(tokens, in, out);
-
         if (i != len - 1) {
           close(pipefd[1]);
           in = pipefd[0];
