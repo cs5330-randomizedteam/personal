@@ -54,7 +54,7 @@ fun_desc_t cmd_table[] = {
   {cmd_cd, "cd", "change the current working directory"},
 };
 
-int pipefds[2][2];
+int pipefd[2];
 
 /* Prints a helpful description for the given command */
 int cmd_help(unused struct tokens *tokens) {
@@ -179,15 +179,18 @@ int count_num_command(struct tokens *tokens) {
   return cnt;
 }
 
-void execute_user_program(struct tokens *tokens, int idx, int total) {
+void execute_user_program(struct tokens *tokens, int in, int out) {
   int pid = fork();
   if (pid == 0) {
-    if (idx != 0) dup2(pipefds[(idx + 1) % 2][0], STDIN_FILENO); 
-    if (idx != total - 1) dup2(pipefds[idx % 2][1], STDOUT_FILENO);
-    close(pipefds[(idx + 1) % 2][0]);
-    close(pipefds[(idx + 1) % 2][1]);
-    close(pipefds[idx % 2][0]);
-    close(pipefds[idx % 2][1]);
+    if (in != STDIN_FILENO) {
+      dup2(in, STDIN_FILENO); 
+      close(in);
+    }
+    if (out != STDOUT_FILENO) {
+      dup2(out, STDOUT_FILENO);
+      close(out);
+    }
+
     char *path = tokens_get_token(tokens, 0);
     char resolved_path[1024];
     int error = resolve_path(path, resolved_path);
@@ -222,11 +225,6 @@ int main(unused int argc, unused char *argv[]) {
 
   static char line[4096];
   int line_num = 0;
-
-  if (pipe(pipefds[0]) == -1 || pipe(pipefds[1]) == -1) {
-    perror("pipe");
-    exit(-1);
-  }
  
   /* Please only print shell prompts when standard input is not a tty */
   if (shell_is_interactive)
@@ -235,6 +233,8 @@ int main(unused int argc, unused char *argv[]) {
   while (fgets(line, 4096, stdin)) {
     struct tokens *programs = tokenize(line, '|');
     int len = tokens_get_length(programs);
+
+    int in = STDIN_FILENO, out = STDOUT_FILENO;
     for (int i = 0; i < len; i++) {
 
       /* Split our line into words. */
@@ -246,7 +246,17 @@ int main(unused int argc, unused char *argv[]) {
       if (fundex >= 0) {
         cmd_table[fundex].fun(tokens);
       } else {
-        execute_user_program(tokens, i, len);
+        if (i != len - 1 && pipe(pipefd) == -1) {
+          perror("pipe");
+          exit(-1);
+        }
+        if (i != len - 1) out = pipefd[1];
+        execute_user_program(tokens, in, out);
+
+        if (i != len - 1) {
+          close(pipefd[1]);
+          in = pipefd[0];
+        }
       }
 
       if (i == len - 1 && shell_is_interactive)
