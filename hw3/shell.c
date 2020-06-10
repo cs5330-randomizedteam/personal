@@ -67,10 +67,12 @@ int cmd_exit(unused struct tokens *tokens) {
 }
 
 int cmd_pwd(struct tokens *tokens) {
-  char* dir = getcwd(NULL, 0);
-  if (dir != NULL) {
+  char dir[256];
+  char *error = getcwd(dir, 256);
+  if (error != NULL) {
     printf("%s\n", dir);
-    free(dir);
+  } else {
+    printf("Error, the path is too long\n");
   }
   return 1;
 }
@@ -122,9 +124,9 @@ void init_shell() {
   }
 }
 
-char* resolve_path(const char* path) {
+int resolve_path(const char* path, char* resolved_path) {
   int n = tokens_get_length(PATH);
-  char *temp = malloc(sizeof(char) * 1024);
+  char temp[1024];
   for (int i = 0; i < n; i++) {
     char* dir = tokens_get_token(PATH, i);
     int len = strlen(dir);
@@ -132,14 +134,11 @@ char* resolve_path(const char* path) {
     temp[len] = '/', temp [len+1] = '\0';
     strcat(temp, path);
     if (access(temp, F_OK) != -1) {
-      char* resolved_path = malloc(sizeof(char) * strlen(temp));
       strcpy(resolved_path, temp);
-      free(temp);
-      return resolved_path;
+      return 0;
     }
   }
-  free(temp);
-  return NULL;
+  return -1;
 }
 
 void redirect(struct tokens *tokens) {
@@ -182,23 +181,27 @@ void execute_user_program(struct tokens *tokens) {
   int pid = fork();
   if (pid == 0) {
     char *path = tokens_get_token(tokens, 0);
-    char *resolved_path = resolve_path(path);
-    if (resolved_path == NULL) {
-      resolved_path = path;
+    char resolved_path[1024];
+    int error = resolve_path(path, resolved_path);
+    if (error == -1) {
+      strcpy(resolved_path, path); 
     }
     redirect(tokens);
     int num_para = tokens_get_length(tokens);
     char **argv = malloc(sizeof(char*) * (1+num_para));
+    int cnt = 0;
     for (int i = 0; i < num_para; i++) {
       char *token = tokens_get_token(tokens, i);
-      if (token[0] == '<' || token[0] == '>') break;
-      argv[i] = token;
+      if (token[0] == '<' || token[0] == '>') {
+        i++;
+        continue;
+      }
+      argv[cnt++] = token;
     }
-    argv[num_para] = NULL;
+    argv[cnt] = NULL;
     execv(resolved_path, argv);
     printf("%s is not found or not able to execute\n", path);
     free(argv);
-    free(resolved_path);
     exit(-1);
   } else {
     wait (NULL);
